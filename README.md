@@ -1,2 +1,1 @@
-# proy
 PROYECTO EDA 16
