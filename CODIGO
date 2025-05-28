@@ -67,3 +67,26 @@ def agendarCita():
     entradaNom.delete(0, tk.END)
     entradaid.delete(0, tk.END)
     entradaTel.delete(0, tk.END)
+#intento de interfaz
+# Interfaz
+ventana = tk.Tk()
+ventana.title("Registro de Pacientes")
+ventana.geometry("400x300")
+ventana.config(bg="#33FFFC")
+ventana.resizable(False, False)
+
+tk.Label(ventana, text="Nombre del paciente:").pack(pady=5)
+entradaNom = tk.Entry(ventana)
+entradaNom.pack()
+
+tk.Label(ventana, text="ID:").pack(pady=5)
+entradaid = tk.Entry(ventana)
+entradaid.pack()
+
+tk.Label(ventana, text="Numero de tel:").pack(pady=5)
+entradaTel = tk.Entry(ventana)
+entradaTel.pack()
+
+tk.Button(ventana, text="Registrar paciente", command=agendarCita).pack(pady=20)
+
+ventana.mainloop()
