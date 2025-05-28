@@ -1,1 +1,69 @@
 #aqui hay que pegar las partes que tengamos del codigo pa irlo teniendo
+#Aqui esta la parte de poner los datos de Agendar cita a un excel
+import tkinter as tk
+from tkinter import messagebox #Lanza una venata de emergencia
+from openpyxl import Workbook, load_workbook #para crear y abrir un archivo
+from openpyxl.styles import PatternFill, Font, Alignment #usar colores en excel/cambiar letra/alinear texto
+from openpyxl.drawing.image import Image #pone el logo en excel
+import os
+
+# Archivo Excel
+registroCitas = "registroCitas.xlsx"
+
+# Crear archivo si no existe
+if not os.path.exists(registroCitas):
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = "Pacientes"
+    # Título en la primera fila
+    hoja.merge_cells('A1:C1')
+    titulo = hoja['A1']
+    titulo.value = "Registro citas pacientes"
+    titulo.fill = PatternFill(start_color="0070C0", end_color="0070C0", fill_type="solid")
+    titulo.font = Font(color="FFFFFF", bold=True, size=14)
+    titulo.alignment = Alignment(horizontal="center", vertical="center")
+    # Encabezados en la segunda fila
+    hoja.append(["Nombre", "ID", "Telefono"])
+    # Ajustar el ancho de columnas
+    hoja.column_dimensions['A'].width = 30 
+    hoja.column_dimensions['B'].width = 15
+    hoja.column_dimensions['C'].width = 20
+    # (Opcional podemos agregar el logo de la empresa o del laboratorio que nos cpngtrate)
+    logo = "logo.png"  # asi le puse a mi imagen, no se como le pusiste tu
+    if os.path.exists(logo):
+        img = Image(logo)
+        img.width = 160  # Tamaño de la imagen en pixeles
+        img.height = 103
+        hoja.add_image(img, "D1")  #Pongo la imagen en la celda D1
+    libro.save(registroCitas)
+
+# Función principal
+def agendarCita():
+    nombre = entradaNom.get()
+    id = entradaid.get()
+    telefono= entradaTel.get()
+
+    if not nombre or not id or not telefono:
+        messagebox.showwarning("Datos incompletos", "Por favor, completa todos los campos.")
+        return
+    if not id.isdigit() or len(id) != 8:
+        messagebox.showwarning("ID inválido", "El ID debe tener exactamente 8 dígitos.")
+        return
+    if not telefono.isdigit() or len(telefono) != 10:
+        messagebox.showwarning("Teléfono inválido", "El número de teléfono debe tener exactamente 10 dígitos.")
+        return
+    
+   
+    # Guardar en Excel
+    libro = load_workbook(registroCitas)
+    hoja = libro["Pacientes"]
+    hoja.append([nombre, id, telefono])
+    libro.save(registroCitas)
+
+    # Mensaje
+    messagebox.showinfo("Ficha generada","Paciente registrado:\n\nNombre:" +nombre +"\nID:" +str(id)+"\nTelefono: "+str(telefono)+"\n")
+
+    # Limpiar campos
+    entradaNom.delete(0, tk.END)
+    entradaid.delete(0, tk.END)
+    entradaTel.delete(0, tk.END)
