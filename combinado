@@ -5,6 +5,28 @@ import os
 import tkinter as tk
 from tkinter import messagebox
 from PIL import Image,ImageTk
+from pythonds3 import Deque
+
+colaTurnos = Deque()
+listaDatos = []
+
+def tiempoRecursivo(size):
+    if size<=1:
+        return 0
+
+    return 12 + tiempoRecursivo(size-1) 
+
+def cambio(cantidad, denominaciones):
+    resultado = []
+    while cantidad > 0:
+        if cantidad >= denominaciones[0]:  
+            num = cantidad // denominaciones[0]  
+            cantidad -= num * denominaciones[0]  
+            resultado.append([denominaciones[0], num])  
+        denominaciones = denominaciones[1:]  
+    return resultado
+
+
 
 def ventanaAgendar():
     ventanaDos = tk.Toplevel()
@@ -63,7 +85,7 @@ def ventanaAgendar():
 
     def cerrarVentanaDos():
         ventanaDos.destroy()
-    
+
     def guardarDatos():
         global nombre 
         nombre = entradaNom.get()
@@ -77,17 +99,25 @@ def ventanaAgendar():
             messagebox.showwarning("Datos incompletos", "Verifica lo que escribiste. ID y telefono deben ser 8 y 10 numeros respectivamente. Tambien deben ser minimo $500 pesos")
             return
         else:
+            colaTurnos.add_rear(id)
+            turnoAsig=colaTurnos.size()
+            tiempo=tiempoRecursivo(turnoAsig)
+            cambioRecibido=cambio(int(dinero)-500,[500,200,100,50,20,10,5,1])
+            listaDatos.append({"Nombre":nombre,"ID":id,"Telefono":telefono})
+
             etiquetaAgendar5=tk.Label(ventanaDos,text="Datos guardados con exito! ",bg="light blue",fg="black",relief="flat",width=40,height=2)
             etiquetaAgendar5.pack()
-            etiquetaAgendar6=tk.Label(ventanaDos,text="Numero de turno asignado = {} ",bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaAgendar6=tk.Label(ventanaDos,text="Numero de turno asignado = {} ".format(turnoAsig),bg="light blue",fg="black",relief="flat",width=40,height=2)
             etiquetaAgendar6.pack()
-            etiquetaAgendar7=tk.Label(ventanaDos,text="Tiempo promedio de espera = {} ",bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaAgendar7=tk.Label(ventanaDos,text="Tiempo promedio de espera = {} minutos".format(tiempo),bg="light blue",fg="black",relief="flat",width=40,height=2)
             etiquetaAgendar7.pack()
-            etiquetaAgendar8=tk.Label(ventanaDos,text="Cambio recibido = {} ",bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaAgendar8=tk.Label(ventanaDos,text="Cambio recibido =${} .Repartido en: {} ".format(int(dinero)-500,cambioRecibido),bg="light blue",fg="black",relief="flat",width=70,height=2)
             etiquetaAgendar8.pack()
             boton2=tk.Button(ventanaDos,text="Terminar",bg="light grey",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=cerrarVentanaDos)
             boton2.pack()
-            libro = load_workbook(registroCitas)
+        
+        
+        libro = load_workbook(registroCitas)
         hoja = libro["Pacientes"]
         hoja.append([nombre, id, telefono])
         libro.save(registroCitas)
@@ -161,9 +191,23 @@ def ventanaTurnos():
             return
 
         else:
+            listaCola=list(colaTurnos._items)
+            listaCola.reverse()
+            print(listaCola)
+            if buscarID in listaCola:
+                posicion=listaCola.index(buscarID)
+                personasAnterior= posicion
+                turno = posicion+1
+                tiempoEspera=tiempoRecursivo(turno)
+            else:
+                messagebox.showwarning("Error", "El ID que ingresaste no esta registrado")
 
-            etiquetaMedico1=tk.Label(ventanaDos,text="Las personas por delante de ti son {}",bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaMedico1=tk.Label(ventanaDos,text="Tienes {} personas por delante de ti".format(personasAnterior),bg="light blue",fg="black",relief="flat",width=40,height=2)
             etiquetaMedico1.pack()
+            etiquetaMedico2=tk.Label(ventanaDos,text="Numero de turno asignado = {} ".format(turno),bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaMedico2.pack()
+            etiquetaMedico3=tk.Label(ventanaDos,text="Tiempo promedio de espera = {} ".format(tiempoEspera),bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaMedico3.pack()
             boton2=tk.Button(ventanaDos,text="Terminar",bg="light grey",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=cerrarVentanaCuatro)
             boton2.pack()
             
