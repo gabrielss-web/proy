@@ -1,0 +1,347 @@
+from tkinter import messagebox
+from PIL import Image as PILImage,ImageTk
+from pythonds3 import Deque
+from openpyxl import Workbook, load_workbook #para crear y abrir un archivo
+from openpyxl.styles import PatternFill, Font, Alignment #usar colores en excel/cambiar letra/alinear texto
+from openpyxl.drawing.image import Image #pone el logo en excel
+import os
+import tkinter as tk
+
+
+colaTurnos = Deque()
+listaDatos = []
+registros = []
+
+def tiempoRecursivo(size):
+    if size<=1:
+        return 0
+
+    return 12 + tiempoRecursivo(size-1) 
+
+def cambio(cantidad, denominaciones):
+    resultado = []
+    while cantidad > 0:
+        if cantidad >= denominaciones[0]:  
+            num = cantidad // denominaciones[0]  
+            cantidad -= num * denominaciones[0]  
+            resultado.append([denominaciones[0], num])  
+        denominaciones = denominaciones[1:]  
+    return resultado
+
+
+
+def ventanaAgendar():
+    ventanaDos = tk.Toplevel()
+    ventanaDos.title("Agendar cita")
+    ventanaDos.geometry("600x500")
+    ventanaDos.configure(bg="light blue")
+    ventanaDos.resizable(False,False)
+
+    etiquetaAgendar=tk.Label(ventanaDos,text="Escriba su nombre: ",bg="light blue",fg="black",relief="flat",width=20,height=2)
+    etiquetaAgendar.pack()
+    entradaNom=tk.Entry(ventanaDos)
+    entradaNom.pack()
+    etiquetaAgendar2=tk.Label(ventanaDos,text="Escriba su ID: ",bg="light blue",fg="black",relief="flat",width=20,height=2)
+    etiquetaAgendar2.pack()
+    entradaid=tk.Entry(ventanaDos)
+    entradaid.pack()
+    etiquetaAgendar3=tk.Label(ventanaDos,text="Escriba su telefono: ",bg="light blue",fg="black",relief="flat",width=20,height=2)
+    etiquetaAgendar3.pack()
+    entradaTel=tk.Entry(ventanaDos)
+    entradaTel.pack()
+    etiquetaAgendar4=tk.Label(ventanaDos,text="Ingrese el dinero: ",bg="light blue",fg="black",relief="flat",width=20,height=2)
+    etiquetaAgendar4.pack()
+    entradaDin=tk.Entry(ventanaDos)
+    entradaDin.pack()
+    etiquetaAgendar5=tk.Label(ventanaDos,text="Costo de la consulta : $475 pesos mexicanos ",bg="light blue",fg="black",relief="flat",width=40,height=2)
+    etiquetaAgendar5.pack()
+
+    registroCitas = "registroCitas.xlsx"
+
+    if not os.path.exists(registroCitas):
+        libro = Workbook()
+        hoja = libro.active
+        hoja.title = "Pacientes"
+        # Título en la primera fila
+        hoja.merge_cells('A1:C1')
+        titulo = hoja['A1']
+        titulo.value = "Registro citas pacientes"
+        titulo.fill = PatternFill(start_color="0070C0", end_color="0070C0", fill_type="solid")
+        titulo.font = Font(color="FFFFFF", bold=True, size=14)
+        titulo.alignment = Alignment(horizontal="center", vertical="center")
+        # Encabezados en la segunda fila
+        hoja.append(["Nombre", "ID", "Telefono"])
+        # Ajustar el ancho de columnas
+        hoja.column_dimensions['A'].width = 30 
+        hoja.column_dimensions['B'].width = 15
+        hoja.column_dimensions['C'].width = 20
+        # (Opcional podemos agregar el logo de la empresa o del laboratorio que nos cpngtrate)
+        logo = "logo.png"  # asi le puse a mi imagen, no se como le pusiste tu
+        if os.path.exists(logo):
+            img = Image(logo)
+            img.width = 160  # Tamaño de la imagen en pixeles
+            img.height = 103
+            hoja.add_image(img, "D1")  #Pongo la imagen en la celda D1
+        libro.save(registroCitas)
+
+
+    def cerrarVentanaDos():
+        ventanaDos.destroy()
+
+    def guardarDatos():
+        global nombre 
+        nombre = entradaNom.get()
+        global id 
+        id = entradaid.get()
+        global telefono 
+        telefono = entradaTel.get()
+        global dinero
+        dinero = entradaDin.get()
+        if not nombre or not id or not telefono:
+            messagebox.showwarning("Datos incompletos", "Por favor, completa todos los campos.")
+            return
+        if not id.isdigit() or len(id) != 8:
+            messagebox.showwarning("ID inválido", "El ID debe tener exactamente 8 dígitos.")
+            return
+        if not telefono.isdigit() or len(telefono) != 10:
+            messagebox.showwarning("Teléfono inválido", "El número de teléfono debe tener exactamente 10 dígitos.")
+            return
+        if  int(dinero)< 475:
+            messagebox.showwarning("Pago incompleto", "Ingrese el efectivo, este programa da cambio")
+            return
+        else:
+            colaTurnos.add_rear(id)
+            turnoAsig=colaTurnos.size()
+            tiempo=tiempoRecursivo(turnoAsig)
+            cambioRecibido=cambio(int(dinero)-475,[500,200,100,50,20,10,5,1])
+            listaDatos.append({"Nombre":nombre,"ID":id,"Telefono":telefono})
+
+            etiquetaAgendar5=tk.Label(ventanaDos,text="Datos guardados con exito! ",bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaAgendar5.pack()
+            etiquetaAgendar6=tk.Label(ventanaDos,text="Numero de turno asignado = {} ".format(turnoAsig),bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaAgendar6.pack()
+            etiquetaAgendar7=tk.Label(ventanaDos,text="Tiempo promedio de espera = {} minutos".format(tiempo),bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaAgendar7.pack()
+            etiquetaAgendar8=tk.Label(ventanaDos,text="Cambio recibido =${} .Repartido en: {} ".format(int(dinero)-475,cambioRecibido),bg="light blue",fg="black",relief="flat",width=70,height=2)
+            etiquetaAgendar8.pack()
+            boton2=tk.Button(ventanaDos,text="Terminar",bg="light grey",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=cerrarVentanaDos)
+            boton2.pack()
+        
+        
+        libro = load_workbook(registroCitas)
+        hoja = libro["Pacientes"]
+        hoja.append([nombre, id, telefono])
+        libro.save(registroCitas)
+    
+    
+    boton1=tk.Button(ventanaDos,text="Guardar datos",bg="light grey",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=guardarDatos)
+    boton1.pack(side="bottom")
+def pedirContrasena():
+    def verificar():
+        if entradaPass.get() == "1234":  # Cambia "1234" por la contraseña que desees
+            ventanaPass.destroy()
+            ventanaMedico()
+        else:
+            messagebox.showerror("Error", "Contraseña incorrecta")
+            entradaPass.delete(0, tk.END)
+
+    ventanaPass = tk.Toplevel()
+    ventanaPass.title("Contraseña requerida")
+    ventanaPass.geometry("300x150")
+    ventanaPass.configure(bg="white")
+    ventanaPass.resizable(False, False)
+
+    etiqueta = tk.Label(ventanaPass, text="Ingrese la contraseña:", bg="white")
+    etiqueta.pack(pady=10)
+    entradaPass = tk.Entry(ventanaPass, show="*")
+    entradaPass.pack(pady=5)
+    boton = tk.Button(ventanaPass, text="Ingresar",bg="#63D7A2", command=verificar)
+    boton.pack(pady=10)
+def ventanaMedico():
+    
+    ventanaDos = tk.Toplevel()
+    ventanaDos.title("Interfaz del Medico ")
+    ventanaDos.geometry("700x275")
+    ventanaDos.configure(bg="white")
+    ventanaDos.resizable(False,False)
+
+   
+    
+    
+    def cerrarVentanaTres():
+        ventanaDos.destroy()
+    def ingresarDatosMedicos():
+        ventanaDatosMed = tk.Toplevel()
+        ventanaDatosMed.title("Ingreso de datos medicos")
+        ventanaDatosMed.geometry("700x400")
+        ventanaDatosMed.configure(bg="white")
+        
+        
+        idText=tk.Label(ventanaDatosMed, text="ID del Paciente",bg="white").grid(row=0, column=0)
+        entrada_id = tk.Entry(ventanaDatosMed)
+        entrada_id.grid(row=0, column=1)
+
+        diagnosticoText=tk.Label(ventanaDatosMed, text="Diagnóstico",bg="white").grid(row=1, column=0)
+        entrada_diag = tk.Entry(ventanaDatosMed)
+        entrada_diag.grid(row=1, column=1)
+
+        medicamentoText=tk.Label(ventanaDatosMed, text="Medicamento",bg="white").grid(row=2, column=0)
+        entrada_med = tk.Entry(ventanaDatosMed)
+        entrada_med.grid(row=2, column=1)
+
+        #descripcion diagnostico
+        texto= tk.Text(ventanaDatosMed, height=5, width=50)
+        texto.grid(row=3, column=1, columnspan=2, padx=5, pady=10)
+        
+
+        # Función para agregar un registro
+        def agregar():
+            id = entrada_id.get()
+            diag = entrada_diag.get()
+            med = entrada_med.get()
+            
+            idArch="Paciente"+entrada_id.get()+entrada_diag.get()+".txt"
+            file=open(idArch, "w")
+            contenido=texto.get("1.0","end-1c")
+            file.write(contenido)
+            file.close()
+
+            if id and diag and med:
+                registros.append({"ID": id, "Diagnóstico": diag, "Medicamento": med})
+                messagebox.showinfo("Éxito", "Registro agregado exitosamente.")
+                entrada_id.delete(0, tk.END)
+                entrada_diag.delete(0, tk.END)
+                entrada_med.delete(0, tk.END)
+            else:
+                messagebox.showwarning("Campos vacíos", "Por favor completa todos los campos.")
+        
+        boton4=tk.Button(ventanaDatosMed, text="Agregar Registro",bg="#63D7A2", command=agregar)
+        boton4.grid(row=5, column=1, columnspan=2, pady=5)
+        boton5=tk.Button(ventanaDatosMed, text="Salir",bg="#63D7A2", command=ventanaDatosMed.destroy)
+        boton5.grid(row=6, column=1, columnspan=2, pady=5)
+        
+    
+    def buscarDiag():
+        ventanaDiag = tk.Toplevel()
+        ventanaDiag.title("Buscar")
+        ventanaDiag.geometry("500x300")
+        ventanaDiag.configure(bg="white")
+        ventanaDiag.resizable(False,False)
+        buscarText=tk.Label(ventanaDiag, text="Buscar por:",bg="white")
+        buscarText.grid(row=4, column=0)
+        busqueda = tk.StringVar(ventanaDiag)
+        busqueda.set("ID")
+        busqueda = tk.OptionMenu(ventanaDiag,busqueda, "ID", "Diagnóstico", "Medicamento")
+        busqueda.config(bg="#63D7A2")
+        busqueda.grid(row=4, column=1)
+
+        valorText=tk.Label(ventanaDiag, text="Valor a buscar:",bg="white")
+        valorText.grid(row=5, column=0)
+        entradaBusqueda = tk.Entry(ventanaDiag)
+        entradaBusqueda.grid(row=5, column=1)
+        def buscar():
+            campo =busqueda.get()
+            valor = entradaBusqueda.get()
+
+            resultados.delete(0, tk.END)
+
+            if not valor or campo not in ["ID", "Diagnóstico", "Medicamento"]:
+                resultados.insert(tk.END, "Datos de búsqueda inválidos.")
+                return
+
+            for r in registros:
+                if valor.lower() in r[campo].lower():
+                    resultados.insert(tk.END, f"ID: {r['ID']}, Diagnóstico: {r['Diagnóstico']}, Medicamento: {r['Medicamento']}")
+
+            if resultados.size() == 0:
+                resultados.insert(tk.END, "No se encontraron resultados.")
+        buscarBoton=tk.Button(ventanaDiag, text="Buscar",bg="#63D7A2", command=buscar)
+        buscarBoton.grid(row=6, column=0, columnspan=2, pady=5)       
+        resultados = tk.Listbox(ventanaDiag, width=50)
+        resultados.grid(row=7, column=0, columnspan=2, padx=5, pady=10)
+        tk.Button(ventanaDiag, text="Salir",bg="#63D7A2", command=ventanaDiag.destroy).grid(row=10, column=0, columnspan=3, pady=10)
+        
+    etiquetaMedico=tk.Label(ventanaDos,text="Elige la opcion que quieras: ",bg="white",fg="black",relief="flat",width=20,height=2)
+    etiquetaMedico.pack()
+    boton1=tk.Button(ventanaDos,text="Ingresar datos medicos",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=ingresarDatosMedicos)
+    boton1.place(x=100,y=50)
+    boton2=tk.Button(ventanaDos,text="Buscar diagnostico",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=buscarDiag)
+    boton2.place(x=400,y=50)
+    boton3=tk.Button(ventanaDos,text="Salir",bg="#63D7A2",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=ventanaDos.destroy)
+    boton3.place(x=285,y=150)
+
+def ventanaTurnos():
+    ventanaDos = tk.Toplevel()
+    ventanaDos.title("Visualizacion de Turnos")
+    ventanaDos.geometry("510x300")
+    ventanaDos.configure(bg="light blue")
+    ventanaDos.resizable(False,False)
+
+    etiquetaMedico2=tk.Label(ventanaDos,text="Escribe tu ID para saber tu turno ",bg="light blue",fg="black",relief="flat",width=40,height=2)
+    etiquetaMedico2.pack()
+    entradaBuscarid=tk.Entry(ventanaDos)
+    entradaBuscarid.pack()
+    
+
+    def cerrarVentanaCuatro():
+        ventanaDos.destroy()
+    
+    def turnos():
+        global buscarID
+        buscarID = entradaBuscarid.get()
+        if not buscarID.isdigit() or len(buscarID)!=8:
+            messagebox.showwarning("Datos errones", "Por favor, escribe solo 8 numeros.")
+            return
+
+        else:
+            listaCola=list(colaTurnos._items)
+            listaCola.reverse()
+            print(listaCola)
+            if buscarID in listaCola:
+                posicion=listaCola.index(buscarID)
+                personasAnterior= posicion
+                turno = posicion+1
+                tiempoEspera=tiempoRecursivo(turno)
+            else:
+                messagebox.showwarning("Error", "El ID que ingresaste no esta registrado")
+
+            etiquetaMedico1=tk.Label(ventanaDos,text="Tienes {} personas por delante de ti".format(personasAnterior),bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaMedico1.pack()
+            etiquetaMedico2=tk.Label(ventanaDos,text="Numero de turno asignado = {} ".format(turno),bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaMedico2.pack()
+            etiquetaMedico3=tk.Label(ventanaDos,text="Tiempo promedio de espera = {} ".format(tiempoEspera),bg="light blue",fg="black",relief="flat",width=40,height=2)
+            etiquetaMedico3.pack()
+            boton2=tk.Button(ventanaDos,text="Terminar",bg="light grey",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=cerrarVentanaCuatro)
+            boton2.pack
+            
+    boton1=tk.Button(ventanaDos,text="Guardar datos",bg="light grey",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=turnos)
+    boton1.pack(side="bottom")
+    boton2=tk.Button(ventanaDos,text="Salir",bg="light grey",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=ventanaDos.destroy)
+    boton2.pack(side="bottom")
+        
+#ventana principal
+def cerrarVentana():
+    ventana.destroy()
+    print("Texto",nombre,id,telefono)
+
+ventana=tk.Tk()
+ventana.title("OptiMed")
+ventana.geometry("510x300")
+ventana.configure(bg="white")
+ventana.resizable(False,False)
+
+
+etiqueta=tk.Label(ventana,text="¡Bienvenidos a OptiMed!",bg="white",fg="black",relief="flat",width=40,height=2)
+etiqueta.place(x=120,y=10)
+etiqueta2=tk.Label(ventana,text="¿Que operacion deseas realizar hoy?",justify="center",bg="white",fg="black",relief="flat",width=40,height=2)
+etiqueta2.place(x=120,y=50)
+boton1=tk.Button(ventana,text="Agendar una cita",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=ventanaAgendar)
+boton1.place(x=10,y=150)
+
+boton2=tk.Button(ventana,text="Ingresar como medico",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=pedirContrasena)
+boton2.place(x=180,y=150)
+boton3=tk.Button(ventana,text="Ver turnos existentes",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=ventanaTurnos)
+boton3.place(x=350,y=150)
+boton4=tk.Button(ventana,text="Salir",bg="#63D7A2",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=cerrarVentana)
+boton4.place(x=215,y=250)
+ventana.mainloop()
