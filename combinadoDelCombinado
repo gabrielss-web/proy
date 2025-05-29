@@ -231,14 +231,16 @@ def ventanaMedico():
         buscarText.grid(row=4, column=0)
         busqueda = tk.StringVar(ventanaDiag)
         busqueda.set("ID")
-        busqueda = tk.OptionMenu(ventanaDiag,busqueda, "ID", "Diagnóstico", "Medicamento")
-        busqueda.config(bg="#63D7A2")
-        busqueda.grid(row=4, column=1)
+        opciones = tk.OptionMenu(ventanaDiag,busqueda, "ID", "Diagnóstico", "Medicamento")
+        opciones.config(bg="#63D7A2")
+        opciones.grid(row=4, column=1)
 
         valorText=tk.Label(ventanaDiag, text="Valor a buscar:",bg="white")
         valorText.grid(row=5, column=0)
         entradaBusqueda = tk.Entry(ventanaDiag)
         entradaBusqueda.grid(row=5, column=1)
+        resultados = tk.Listbox(ventanaDiag, width=50)
+        resultados.grid(row=7, column=0, columnspan=2, padx=5, pady=10)
         def buscar():
             campo =busqueda.get()
             valor = entradaBusqueda.get()
@@ -257,8 +259,6 @@ def ventanaMedico():
                 resultados.insert(tk.END, "No se encontraron resultados.")
         buscarBoton=tk.Button(ventanaDiag, text="Buscar",bg="#63D7A2", command=buscar)
         buscarBoton.grid(row=6, column=0, columnspan=2, pady=5)       
-        resultados = tk.Listbox(ventanaDiag, width=50)
-        resultados.grid(row=7, column=0, columnspan=2, padx=5, pady=10)
         tk.Button(ventanaDiag, text="Salir",bg="#63D7A2", command=ventanaDiag.destroy).grid(row=10, column=0, columnspan=3, pady=10)
         
     etiquetaMedico=tk.Label(ventanaDos,text="Elige la opcion que quieras: ",bg="white",fg="black",relief="flat",width=20,height=2)
