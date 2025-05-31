@@ -1,0 +1,485 @@
+from tkinter import messagebox # Importa el módulo messagebox de tkinter para mostrar mensajes emergentes.
+from pythonds3 import Deque # Importa la estructura de datos Deque (cola de doble extremo) de la librería pythonds3.
+from openpyxl import Workbook, load_workbook # Importa Workbook (para crear nuevos libros Excel) y load_workbook (para abrir existentes) de openpyxl.
+from openpyxl.styles import PatternFill, Font, Alignment # Importa clases para aplicar estilos a celdas de Excel: relleno, fuente y alineación.
+from openpyxl.drawing.image import Image # Importa la clase Image para insertar imágenes en archivos Excel.
+import os # Importa el módulo os para interactuar con el sistema operativo, como verificar la existencia de archivos.
+import tkinter as tk # Importa la librería tkinter, el estándar de Python para crear interfaces gráficas de usuario, y la renombra como 'tk' para facilitar su uso.
+from PIL import Image # Importa la clase Image de la librería Pillow (PIL) para manipular imágenes (abrir, redimensionar).
+from PIL import ImageTk # Importa ImageTk de Pillow para convertir imágenes PIL en objetos compatibles con Tkinter.
+
+
+colaTurnos = Deque() # Inicializa una Deque vacía que funcionará como la cola principal de turnos para los IDs de los pacientes.
+colaTurnosAux= Deque() # Inicializa otra Deque auxiliar, utilizada para la visualización de turnos y su gestión interna.
+listaDatos = [] # Crea una lista vacía para almacenar temporalmente los datos de los pacientes (nombre, ID, teléfono).
+registros = [] # Crea una lista vacía para almacenar los registros médicos de los pacientes (ID, diagnóstico, medicamento).
+fichasTiempos = {} # Crea un diccionario vacío para guardar el estado de la cuenta regresiva de cada ficha (ID de ficha: (etiqueta Tkinter, tiempo restante)).
+tiempoEspera = 1 * 60 # Define el tiempo inicial de la cuenta regresiva en segundos (1 minuto).
+
+# ---
+## Funciones Auxiliares
+---
+
+def cuentaRegresiva(tiempoRestante,fichaId, etiqueta,ventana):
+    # Esta función implementa una cuenta regresiva visual en una etiqueta de Tkinter.
+    if tiempoRestante > 0:
+        # Si aún queda tiempo, calcula minutos y segundos.
+        minutos = tiempoRestante // 60
+        segundos = tiempoRestante % 60
+        # Formatea el tiempo para mostrarlo como MM:SS.
+        tiempoTexto = "{:02d}:{:02d}".format(minutos, segundos)
+        # Actualiza el texto de la etiqueta con el ID de la ficha y el tiempo restante.
+        etiqueta.config(text="ID " + str(fichaId) + " - Tiempo restante: " +tiempoTexto)
+        # Llama a esta misma función de nuevo después de 1000 milisegundos (1 segundo),
+        # pasando el tiempo restante disminuido en 1. Esto crea el efecto de cuenta regresiva.
+        ventana.after(1000, cuentaRegresiva, tiempoRestante - 1, fichaId, etiqueta,ventana)
+        # Almacena el estado actual de la cuenta regresiva en el diccionario fichasTiempos.
+        # Esto es útil para mantener el seguimiento si se cierra y abre la ventana de turnos.
+        fichasTiempos[fichaId] = (etiqueta, tiempoRestante - 1)
+    else:
+        # Si el tiempo llega a 0 o menos, actualiza la etiqueta para indicar que el turno ha llegado.
+        etiqueta.config(text="ID " + str(fichaId) + " - ¡Turno! Favor de pasar al consultorio.")
+        # Muestra un mensaje emergente al usuario.
+        messagebox.showinfo("Turno", "Ficha " + str(fichaId) + ":\nFavor de pasar al consultorio.")
+        # Elimina la ficha del diccionario fichasTiempos, ya que su cuenta regresiva ha terminado.
+        fichasTiempos.pop(fichaId, None)
+
+def tiempoRecursivo(size):
+    # Esta función calcula un tiempo basado recursivamente en el 'size' (tamaño).
+    # La lógica sugiere que es un cálculo que aumenta linealmente con el tamaño.
+    if size<=1:
+        return 0 # Caso base: si el tamaño es 1 o menos, el tiempo es 0.
+    return 12 + tiempoRecursivo(size-1) # Paso recursivo: suma 12 y llama a sí misma con size-1.
+                                     # Lógica: Podría representar un tiempo que aumenta por cada elemento adicional,
+                                     # por ejemplo, el tiempo de espera por cada persona delante en una fila.
+
+def cambio(cantidad, denominaciones):
+    # Esta función calcula el cambio a devolver dada una cantidad y las denominaciones disponibles.
+    resultado = [] # Lista para almacenar el resultado (denominación, cantidad de billetes/monedas).
+    while cantidad > 0: # Continúa mientras quede cantidad por devolver.
+        if cantidad >= denominaciones[0]: # Si la cantidad es mayor o igual a la denominación más grande.
+            num = cantidad // denominaciones[0] # Calcula cuántos billetes/monedas de esa denominación se necesitan.
+            cantidad -= num * denominaciones[0] # Resta el valor de esos billetes/monedas a la cantidad restante.
+            resultado.append([denominaciones[0], num]) # Añade la denominación y la cantidad al resultado.
+        denominaciones = denominaciones[1:] # Pasa a la siguiente denominación más pequeña (elimina la primera).
+    return resultado # Retorna la lista con el cambio desglosado.
+                     # Lógica: Implementa un algoritmo codicioso para el cambio de moneda, que funciona para sistemas de moneda estándar.
+
+# ---
+## Ventanas de la Aplicación
+---
+
+def ventanaAgendar():
+    # Esta función crea la ventana para agendar una nueva cita (interfaz de usuario).
+    ventanaDos = tk.Toplevel() # Crea una nueva ventana de nivel superior (secundaria) en Tkinter.
+    ventanaDos.title("Agendar cita") # Establece el título de la ventana.
+    ventanaDos.geometry("600x675") # Define el tamaño de la ventana.
+    ventanaDos.configure(bg="white") # Configura el color de fondo de la ventana.
+    ventanaDos.resizable(False,False) # Impide que el usuario redimensione la ventana.
+    frameFichas = tk.Frame(ventanaDos) # Crea un marco dentro de la ventana para organizar widgets.
+    frameFichas.pack(pady=10) # Empaqueta el marco con un padding vertical.
+    
+    def guardarDatos():
+        # Esta función se encarga de recopilar y validar los datos del formulario de agendar cita.
+        # `global nombre`, `global id`, `global telefono`, `global dinero`: Estas líneas son innecesarias
+        # ya que las variables se utilizan dentro de esta función y no necesitan ser globales para ser
+        # accedidas en el alcance de la función. De hecho, `id` es un nombre de variable problemático
+        # porque colisiona con la función `id()` de Python. Se renombrará a `id_paciente`.
+        nombre = entradaNom.get() # Obtiene el texto del campo de entrada de nombre.
+        id_paciente = entradaid.get() # Obtiene el texto del campo de entrada de ID.
+        telefono = entradaTel.get() # Obtiene el texto del campo de entrada de teléfono.
+        dinero_str = entradaDin.get() # Obtiene el texto del campo de entrada de dinero (como string).
+        
+        if not nombre or not id_paciente or not telefono or not dinero_str:
+            messagebox.showwarning("Datos incompletos", "Por favor, completa todos los campos.")
+            return # Si algún campo está vacío, muestra una advertencia y sale de la función.
+        if not id_paciente.isdigit() or len(id_paciente) != 8:
+            messagebox.showwarning("ID invalido", "El ID debe tener exactamente 8 dígitos.")
+            return # Valida que el ID sean 8 dígitos numéricos.
+        if not telefono.isdigit() or len(telefono) != 10:
+            messagebox.showwarning("Teléfono invalido", "El numero de telefono debe tener exactamente 10 digitos.")
+            return # Valida que el teléfono sean 10 dígitos numéricos.
+        
+        try:
+            dinero = int(dinero_str) # Intenta convertir el dinero a entero.
+        except ValueError: # Si la conversión falla (no es un número), captura el error.
+            messagebox.showwarning("Entrada inválida", "El dinero debe ser un número entero.")
+            return # Muestra una advertencia y sale de la función.
+
+        if dinero < 475: # Valida que el dinero ingresado sea suficiente para la consulta.
+            messagebox.showwarning("Pago incompleto", "Ingrese el efectivo, este programa da cambio")
+            return # Muestra una advertencia y sale.
+        else:
+            colaTurnos.add_rear(id_paciente) # Añade el ID del paciente al final de la cola principal de turnos.
+            colaTurnosAux.add_rear(id_paciente) # Añade el ID del paciente al final de la cola auxiliar.
+            contadorFicha = colaTurnos.size() # Obtiene el número total de turnos (tamaño de la cola).
+            # `fichaNum = contadorFicha`: Esta línea es redundante, ya que no se utiliza `fichaNum` posteriormente.
+            etiquetaNueva = tk.Label(frameFichas) # Crea una nueva etiqueta (aunque no se le asigna texto aquí).
+            etiquetaNueva.pack(pady=2) # Empaqueta la etiqueta.
+
+            cambioRecibido=cambio(dinero - 475,[500,200,100,50,20,10,5,1]) # Calcula el cambio.
+            listaDatos.append({"Nombre":nombre,"ID":id_paciente,"Telefono":telefono}) # Añade los datos del paciente a la lista.
+
+            etiquetaAgendar5=tk.Label(ventanaDos,text="Datos guardados con exito! ",bg="white",fg="black",relief="flat",width=40,height=2)
+            etiquetaAgendar5.pack() # Muestra un mensaje de éxito.
+            etiquetaAgendar6=tk.Label(ventanaDos,text="Numero de turno asignado = {} ".format(contadorFicha),bg="white",fg="black",relief="flat",width=40,height=2)
+            etiquetaAgendar6.pack() # Muestra el número de turno asignado.
+            if (contadorFicha==1): # Si es el primer turno.
+                etiquetaAgendar7=tk.Label(ventanaDos,text="Por favor pasa con el medico",bg="white",fg="black",relief="flat",width=40,height=2)
+                etiquetaAgendar7.pack() # Indica que pase directamente.
+            else: # Si no es el primer turno.
+                etiquetaTiempo = tk.Label(ventanaDos, text= "- Tiempo restante: 01:00" , bg="white",fg="black", relief="flat", width=40, height=2)
+                etiquetaTiempo.pack() # Muestra la etiqueta para el tiempo.
+                cuentaRegresiva(tiempoEspera,id_paciente, etiquetaTiempo, ventanaDos) # Inicia la cuenta regresiva para este turno.
+                
+            etiquetaAgendar8=tk.Label(ventanaDos,text="Cambio recibido =${} .Repartido en: {} ".format(dinero-475,cambioRecibido),bg="white",fg="black",relief="flat",width=70,height=2)
+            etiquetaAgendar8.pack() # Muestra el cambio recibido.
+            etiquetaAgendar9=tk.Label(ventanaDos,text="¿Deseas agregar otra cita?",bg="white",fg="black",relief="flat",width=70,height=2)
+            etiquetaAgendar9.place(x=60,y=440) # Pregunta si se desea agendar otra cita.
+            
+            boton1=tk.Button(ventanaDos,text="Si",bg="#63D7A2",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=funcionConjunta)
+            boton1.place(x=100,y=485) # Botón para agendar otra cita.
+            boton2=tk.Button(ventanaDos,text="No",bg="#63D7A2",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=cerrarVentanaDos)
+            boton2.place(x=400,y=485) # Botón para cerrar la ventana.
+            
+            # Guardar en Excel
+            # `registroCitas` no estaba definida en este alcance, se movió la definición al inicio de `ventanaAgendar`.
+            libro = load_workbook(registroCitas) # Carga el libro de Excel existente.
+            hoja = libro["Pacientes"] # Selecciona la hoja "Pacientes".
+            hoja.append([nombre, id_paciente, telefono]) # Añade una nueva fila con los datos del paciente.
+            libro.save(registroCitas) # Guarda los cambios en el archivo Excel.
+       
+    # Componentes de la UI para agendar cita
+    etiquetaAgendar=tk.Label(ventanaDos,text="Escriba su nombre: ",bg="white",fg="black",relief="flat",width=20,height=2)
+    etiquetaAgendar.pack()
+    entradaNom=tk.Entry(ventanaDos,bg="#F5F5F5")
+    entradaNom.pack()
+    etiquetaAgendar2=tk.Label(ventanaDos,text="Escriba su ID: ",bg="white",fg="black",relief="flat",width=20,height=2)
+    etiquetaAgendar2.pack()
+    entradaid=tk.Entry(ventanaDos,bg="#F5F5F5")
+    entradaid.pack()
+    etiquetaAgendar3=tk.Label(ventanaDos,text="Escriba su telefono: ",bg="white",fg="black",relief="flat",width=20,height=2)
+    etiquetaAgendar3.pack()
+    entradaTel=tk.Entry(ventanaDos,bg="#F5F5F5")
+    entradaTel.pack()
+    etiquetaAgendar4=tk.Label(ventanaDos,text="Ingrese el dinero: ",bg="white",fg="black",relief="flat",width=20,height=2)
+    etiquetaAgendar4.pack()
+    entradaDin=tk.Entry(ventanaDos,bg="#F5F5F5")
+    entradaDin.pack()
+    etiquetaAgendar5=tk.Label(ventanaDos,text="Costo de la consulta : $475 pesos mexicanos ",bg="white",fg="black",relief="flat",width=40,height=2)
+    etiquetaAgendar5.pack()
+
+    # Definición del nombre del archivo Excel
+    registroCitas = "registroCitas.xlsx"
+
+    # Verifica si el archivo Excel existe, si no, lo crea y configura.
+    if not os.path.exists(registroCitas):
+        libro = Workbook() # Crea un nuevo libro de trabajo.
+        hoja = libro.active # Obtiene la hoja activa.
+        hoja.title = "Pacientes" # Cambia el título de la hoja.
+        hoja.merge_cells('A1:C1') # Combina las celdas A1 a C1 para el título.
+        titulo = hoja['A1'] # Accede a la celda combinada.
+        titulo.value = "Registro citas pacientes" # Establece el valor del título.
+        titulo.fill = PatternFill(start_color="0070C0", end_color="0070C0", fill_type="solid") # Aplica color de fondo.
+        titulo.font = Font(color="FFFFFF", bold=True, size=14) # Configura la fuente (color, negrita, tamaño).
+        titulo.alignment = Alignment(horizontal="center", vertical="center") # Centra el texto.
+        hoja.append(["Nombre", "ID", "Telefono"]) # Añade los encabezados de las columnas.
+        hoja.column_dimensions['A'].width = 30 # Ajusta el ancho de la columna A.
+        hoja.column_dimensions['B'].width = 15 # Ajusta el ancho de la columna B.
+        hoja.column_dimensions['C'].width = 20 # Ajusta el ancho de la columna C.
+        logo = "logo.png" # Nombre del archivo del logo.
+        if os.path.exists(logo): # Verifica si el logo existe.
+            img = Image(logo) # Crea un objeto Image de openpyxl.
+            img.width = 160 # Establece el ancho de la imagen.
+            img.height = 103 # Establece la altura de la imagen.
+            hoja.add_image(img, "D1") # Inserta la imagen en la celda D1.
+        libro.save(registroCitas) # Guarda el libro de trabajo.
+
+    def funcionConjunta():
+        # Función para cerrar la ventana actual y abrir una nueva ventana para agendar otra cita.
+        cerrarVentanaDos()
+        ventanaAgendar()
+
+    def cerrarVentanaDos():
+        # Cierra la ventana actual (ventanaDos).
+        ventanaDos.destroy()
+    
+    boton1=tk.Button(ventanaDos,text="Guardar datos",bg="#63D7A2",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=guardarDatos)
+    boton1.place(x=250,y=500) # Botón para guardar los datos ingresados.
+    
+def pedirContrasena():
+    # Crea una ventana para pedir la contraseña al médico.
+    def verificar():
+        # Función para verificar la contraseña.
+        if entradaPass.get() == "1234": # Compara la contraseña ingresada con "1234".
+            ventanaPass.destroy() # Si es correcta, cierra la ventana de contraseña.
+            ventanaMedico() # Y abre la interfaz del médico.
+        else:
+            messagebox.showerror("Error", "Contraseña incorrecta") # Si es incorrecta, muestra un error.
+            entradaPass.delete(0, tk.END) # Y borra el contenido del campo de contraseña.
+
+    ventanaPass = tk.Toplevel() # Crea la ventana de contraseña.
+    ventanaPass.title("Contraseña requerida")
+    ventanaPass.geometry("300x150")
+    ventanaPass.configure(bg="white")
+    ventanaPass.resizable(False, False)
+
+    etiqueta = tk.Label(ventanaPass, text="Ingrese la contraseña:", bg="white")
+    etiqueta.pack(pady=10)
+    entradaPass = tk.Entry(ventanaPass, show="*",bg="#F5F5F5") # Campo de entrada para la contraseña (oculta caracteres).
+    entradaPass.pack(pady=5)
+    boton = tk.Button(ventanaPass, text="Ingresar",bg="#63D7A2", command=verificar)
+    boton.pack(pady=10)
+
+def ventanaMedico():
+    # Esta función crea la interfaz para el médico.
+    ventanaDos = tk.Toplevel() # Crea la ventana.
+    ventanaDos.title("Interfaz del Medico ")
+    ventanaDos.geometry("700x175")
+    ventanaDos.configure(bg="white")
+    ventanaDos.resizable(False,False)
+
+    def mostrarRegistrosOrdenados():
+        # Muestra una ventana con los registros de pacientes ordenados por ID.
+        ventanaOrdenados = tk.Toplevel()
+        ventanaOrdenados.title("Registros de los pacientes en orden por ID")
+        ventanaOrdenados.geometry("600x400")
+        ventanaOrdenados.configure(bg="white")
+
+        if not registros:
+            tk.Label(ventanaOrdenados, text="No hay registros para mostrar.", bg="white").pack(pady=20)
+            return # Si no hay registros, muestra un mensaje y sale.
+
+        def quickSid(arregloUno):
+            # Implementación del algoritmo Quicksort para ordenar la lista de diccionarios por 'ID'.
+            if len(arregloUno) <= 1:
+                return arregloUno # Caso base de la recursión: lista de 0 o 1 elemento ya está ordenada.
+
+            pivote = arregloUno[len(arregloUno) // 2] # Elige el elemento central como pivote.
+            pivoteid = int(pivote['ID']) # Obtiene el ID del pivote y lo convierte a entero.
+
+            izquierda = [id for id in arregloUno if int(id['ID']) < pivoteid] # Elementos con ID menor que el pivote.
+            medio = [id for id in arregloUno if int(id['ID']) == pivoteid] # Elementos con ID igual al pivote.
+            derecha = [id for id in arregloUno if int(id['ID']) > pivoteid] # Elementos con ID mayor que el pivote.
+
+            return quickSid(izquierda) + medio + quickSid(derecha) # Combina las partes ordenadas recursivamente.
+
+        regiOrdenados = quickSid(registros) # Llama a Quicksort para ordenar los registros.
+
+        resultados = tk.Listbox(ventanaOrdenados, width=70, height=15,bg="#F5F5F5") # Crea un widget Listbox para mostrar los resultados.
+        resultados.pack(pady=10)
+
+        for r in regiOrdenados:
+            resultados.insert(tk.END, f"ID: {r['ID']}, Diagnostico: {r['Diagnostico']}, Medicamento: {r['Medicamento']}") # Inserta cada registro ordenado.
+
+        botonCerrar = tk.Button(ventanaOrdenados, text="Cerrar", command=ventanaOrdenados.destroy, bg="#63D7A2")
+        botonCerrar.pack(pady=10) # Botón para cerrar la ventana.
+
+    # `def cerrarVentanaTres()`: Esta función está definida pero no se usa en el código proporcionado. Podría eliminarse.
+    def cerrarVentanaTres():
+        ventanaDos.destroy()
+
+    def ingresarDatosMedicos():
+        # Permite al médico ingresar el diagnóstico y medicamento para un paciente.
+        if colaTurnos.is_empty():
+            messagebox.showerror("Error", "No hay pacientes en espera") # Si la cola está vacía, muestra un error.
+        else:
+            ventanaDatosMed = tk.Toplevel() # Crea la ventana de ingreso de datos médicos.
+            ventanaDatosMed.title("Ingreso de datos medicos")
+            ventanaDatosMed.geometry("700x400")
+            ventanaDatosMed.configure(bg="white")
+
+            IDactual=colaTurnos.remove_front() # Obtiene el ID del paciente actual de la cola principal.
+            
+            idText=tk.Label(ventanaDatosMed, text="ID del Paciente",bg="white").grid(row=0, column=0) # Etiqueta para el ID.
+            etiquetaID=tk.Label(ventanaDatosMed,text="{}".format(IDactual),bg="white").grid(row=0,column=1) # Muestra el ID del paciente actual.
+
+            diagnosticoText=tk.Label(ventanaDatosMed, text="Diagnostico",bg="white").grid(row=1, column=0) # Etiqueta para diagnóstico.
+            entrada_diag = tk.Entry(ventanaDatosMed,bg="#F5F5F5") # Campo de entrada para diagnóstico.
+            entrada_diag.grid(row=1, column=1)
+
+            medicamentoText=tk.Label(ventanaDatosMed, text="Medicamento",bg="white").grid(row=2, column=0) # Etiqueta para medicamento.
+            entrada_med = tk.Entry(ventanaDatosMed,bg="#F5F5F5") # Campo de entrada para medicamento.
+            entrada_med.grid(row=2, column=1)
+
+            # Campo de texto para la descripción del diagnóstico (receta).
+            recetaDes=tk.Label(ventanaDatosMed, text="Desarrolle el diagnostico:",bg="white").grid(row=3, column=0)
+            texto= tk.Text(ventanaDatosMed, height=5, width=50,bg="#F5F5F5") # Widget Text para texto multilinea.
+            texto.grid(row=5, column=1, columnspan=2, padx=5, pady=10) # Coloca el widget Text.
+        
+        def funcionConjunta():
+            # Combina la acción de agregar el registro y cerrar la ventana.
+            agregar()
+            ventanaDatosMed.destroy()
+            
+        def agregar():
+            # Guarda los datos médicos del paciente.
+            id = IDactual # Obtiene el ID del paciente actual.
+            diag = entrada_diag.get() # Obtiene el diagnóstico.
+            med = entrada_med.get() # Obtiene el medicamento.
+            
+            # Crea el nombre del archivo de la receta.
+            idArch="Receta_Paciente_"+IDactual+"_"+entrada_diag.get()+".txt"
+            file=open(idArch, "w") # Abre el archivo en modo escritura.
+            contenido=texto.get("1.0","end-1c") # Obtiene todo el texto del widget Text.
+            file.write(contenido) # Escribe el contenido en el archivo.
+            file.close() # Cierra el archivo.
+
+            if id and diag and med: # Verifica que los campos importantes no estén vacíos.
+                registros.append({"ID": id, "Diagnostico": diag, "Medicamento": med}) # Añade el registro a la lista.
+                messagebox.showinfo("Éxito", "Registro agregado exitosamente.") # Muestra un mensaje de éxito.
+                entrada_diag.delete(0, tk.END) # Borra el contenido del campo de diagnóstico.
+                entrada_med.delete(0, tk.END) # Borra el contenido del campo de medicamento.
+            else:
+                messagebox.showwarning("Campos vacíos", "Por favor completa todos los campos.") # Muestra una advertencia.
+        
+        boton4=tk.Button(ventanaDatosMed, text="Agregar Registro",bg="#63D7A2", command=funcionConjunta)
+        boton4.grid(row=6, column=1, columnspan=2, pady=5) # Botón para agregar el registro.
+        boton5=tk.Button(ventanaDatosMed, text="Salir",bg="#63D7A2", command=ventanaDatosMed.destroy)
+        boton5.grid(row=7, column=1, columnspan=2, pady=5) # Botón para salir.
+        
+    def buscarDiag():
+        # Crea una ventana para buscar diagnósticos.
+        ventanaDiag = tk.Toplevel()
+        ventanaDiag.title("Buscar")
+        ventanaDiag.geometry("315x350")
+        ventanaDiag.configure(bg="white")
+        ventanaDiag.resizable(False,False)
+        buscarText=tk.Label(ventanaDiag, text="Buscar por:",bg="white")
+        buscarText.grid(row=4, column=0) # Etiqueta "Buscar por:".
+        busqueda = tk.StringVar(ventanaDiag) # Variable para almacenar la opción de búsqueda seleccionada.
+        busqueda.set("ID") # Valor predeterminado de la opción.
+        opciones = tk.OptionMenu(ventanaDiag,busqueda, "ID", "Diagnostico", "Medicamento") # Menú desplegable.
+        opciones.config(bg="#63D7A2")
+        opciones.grid(row=4, column=1)
+
+        valorText=tk.Label(ventanaDiag, text="Valor a buscar:",bg="white")
+        valorText.grid(row=5, column=0) # Etiqueta "Valor a buscar:".
+        entradaBusqueda = tk.Entry(ventanaDiag,bg="#F5F5F5") # Campo de entrada para el valor de búsqueda.
+        entradaBusqueda.grid(row=5, column=1)
+        resultados = tk.Listbox(ventanaDiag, width=50) # Listbox para mostrar los resultados de la búsqueda.
+        resultados.grid(row=7, column=0, columnspan=2, padx=5, pady=10)
+        def buscar():
+            # Realiza la búsqueda en los registros.
+            campo =busqueda.get() # Obtiene el campo seleccionado para buscar.
+            valor = entradaBusqueda.get() # Obtiene el valor a buscar.
+
+            resultados.delete(0, tk.END) # Limpia el Listbox de resultados anteriores.
+
+            if not valor or campo not in ["ID", "Diagnostico", "Medicamento"]:
+                resultados.insert(tk.END, "Datos de búsqueda inválidos.") # Valida la entrada de búsqueda.
+                return
+
+            for r in registros: # Itera sobre cada registro.
+                # Verifica si el valor de búsqueda (en minúsculas) está en el campo del registro (también en minúsculas).
+                # `r[campo].lower()` asume que `r[campo]` es una cadena. Para IDs, `str()` debe usarse.
+                # `if valor.lower() in str(r[campo]).lower():` sería más robusto.
+                if valor.lower() in r[campo].lower():
+                    resultados.insert(tk.END, f"ID: {r['ID']}, Diagnostico: {r['Diagnostico']}, Medicamento: {r['Medicamento']}") # Muestra el resultado.
+
+            if resultados.size() == 0:
+                resultados.insert(tk.END, "No se encontraron resultados.") # Si no hay resultados, muestra un mensaje.
+        buscarBoton=tk.Button(ventanaDiag, text="Buscar",bg="#63D7A2", command=buscar)
+        buscarBoton.grid(row=6, column=0, columnspan=2, pady=5) # Botón para iniciar la búsqueda.
+        tk.Button(ventanaDiag, text="Salir",bg="#63D7A2", command=ventanaDiag.destroy).grid(row=10, column=0, columnspan=3, pady=10) # Botón para salir.
+        
+    # Componentes de la UI de la ventana del médico
+    etiquetaMedico=tk.Label(ventanaDos,text="Elige la opcion que quieras: ",bg="white",fg="black",relief="flat",width=20,height=2)
+    etiquetaMedico.pack()
+    botonOrdenar = tk.Button(ventanaDos, text="Ver Registros Ordenados", bg="#63D7A2", fg="black", relief="raised", width=25, height=2, cursor="hand2", command=mostrarRegistrosOrdenados)
+    botonOrdenar.place(x=250, y=100) # Botón para ver registros ordenados.
+    boton1=tk.Button(ventanaDos,text="Ingresar datos medicos",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=ingresarDatosMedicos)
+    boton1.place(x=50,y=100) # Botón para ingresar datos médicos.
+    boton2=tk.Button(ventanaDos,text="Buscar diagnostico",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=buscarDiag)
+    boton2.place(x=500,y=100) # Botón para buscar diagnóstico.
+    boton3=tk.Button(ventanaDos,text="Salir",bg="#63D7A2",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=ventanaDos.destroy)
+    boton3.place(x=600,y=20) # Botón para salir de la ventana del médico.
+
+def ventanaTurnos():
+    # Crea la ventana para visualizar los turnos existentes.
+    ventanaDos = tk.Toplevel()
+    ventanaDos.title("Visualizacion de Turnos")
+    ventanaDos.geometry("510x300")
+    ventanaDos.configure(bg="white")
+    ventanaDos.resizable(False, False)
+    frameFichas = tk.Frame(ventanaDos, bg="white")
+    frameFichas.pack(pady=10)
+
+    # `ficha1=colaTurnosAux.remove_front()`: Esta línea intenta remover un elemento de la cola `colaTurnosAux`
+    # antes de la validación `colaTurnosAux.is_empty()`, lo que puede causar un error si la cola ya está vacía.
+    # Además, la intención de esta ventana es "visualizar" los turnos, no removerlos.
+    # `ficha=colaTurnosAux.size`: `colaTurnosAux.size` es una referencia al método `size`, no a su valor.
+    # Debería ser `colaTurnosAux.size()`.
+
+    if colaTurnosAux.is_empty(): # Verifica si la cola auxiliar está vacía.
+        messagebox.showerror("Error", "No hay pacientes en espera") # Muestra un error.
+        ventanaDos.destroy() # Cierra la ventana si no hay turnos.
+        return # Sale de la función.
+    
+    # Mejor manejo de la visualización de turnos sin modificar la cola
+    # Crea una copia de los IDs en la cola para iterar sobre ellos.
+    turnos_para_mostrar = list(colaTurnosAux._items) 
+
+    # La lógica para el primer turno aquí es confusa y duplica la de `ventanaAgendar`.
+    # Lo más común para una vista de turnos es mostrar todos los turnos en la cola.
+    for i, fichaId in enumerate(turnos_para_mostrar):
+        # Para cada ID en la cola, crea una etiqueta.
+        etiqueta = tk.Label(frameFichas, text=f"ID: {fichaId}", bg="#63D7A2", font=("Arial", 12))
+        etiqueta.pack(pady=2)
+
+        if fichaId in fichasTiempos:
+            # Si la ficha ya tiene una cuenta regresiva en curso, la actualiza.
+            tiempoRestanteActual = fichasTiempos[fichaId][1]
+            cuentaRegresiva(tiempoRestanteActual, fichaId, etiqueta, ventanaDos)
+        else:
+            # Si es una nueva ficha o no tiene cuenta regresiva (ej. el primer turno que se ha llamado)
+            # asume el tiempo de espera inicial.
+            # Se podría añadir una lógica para distinguir el "turno actual" que ya fue llamado
+            # de los "turnos en espera" que todavía tienen su cuenta regresiva.
+            cuentaRegresiva(tiempoEspera, fichaId, etiqueta, ventanaDos)
+
+
+    boton2 = tk.Button(ventanaDos, text="Salir", bg="#63D7A2", fg="black", relief="raised", width=10, height=2, cursor="hand2", command=ventanaDos.destroy)
+    boton2.pack(side="bottom") # Botón para salir de la ventana de turnos.
+
+# ---
+## Ventana Principal (Main Application)
+---
+
+# ventana principal
+def cerrarVentana():
+    ventana.destroy() # Cierra la ventana principal de la aplicación.
+
+ventana=tk.Tk() # Crea la ventana principal de Tkinter.
+ventana.title("OptiMed") # Establece el título de la ventana.
+ventana.geometry("800x600") # Define el tamaño de la ventana.
+ventana.configure(bg="white") # Establece el color de fondo.
+ventana.resizable(False,False) # Impide redimensionar la ventana.
+
+# Carga y muestra la imagen del logo.
+imagen = Image.open("logo.jpg") # Abre la imagen "logo.jpg" con Pillow.
+imagen = imagen.resize((400, 350)) # Redimensiona la imagen.
+imagen_tk = ImageTk.PhotoImage(imagen) # Convierte la imagen PIL a un formato compatible con Tkinter.
+etiqueta_imagen = tk.Label(ventana, image=imagen_tk, bg="white") # Crea una etiqueta para mostrar la imagen.
+etiqueta_imagen.place(x=200, y=150) # Coloca la imagen en una posición específica.
+
+# Etiquetas de bienvenida en la ventana principal.
+etiqueta=tk.Label(ventana,text="¡Bienvenidos a OptiMed!",bg="white",fg="black",font=("",20),relief="flat",width=40,height=2)
+etiqueta.place(x=90,y=30)
+etiqueta2=tk.Label(ventana,text="¿Que operacion deseas realizar hoy?",justify="center",font=("",20),bg="white",fg="black",relief="flat",width=40,height=2)
+etiqueta2.place(x=90,y=90)
+
+# Botones de la ventana principal.
+boton1=tk.Button(ventana,text="Ingresar como usuario",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=ventanaAgendar)
+boton1.place(x=120,y=520) # Abre la ventana para agendar cita.
+
+boton2=tk.Button(ventana,text="Ingresar como medico",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=pedirContrasena)
+boton2.place(x=320,y=520) # Abre la ventana de contraseña para el médico.
+
+boton3=tk.Button(ventana,text="Ver turnos existentes",bg="#63D7A2",fg="black",relief="raised",width=20,height=2,cursor="hand2",command=ventanaTurnos)
+boton3.place(x=520,y=520) # Abre la ventana para ver los turnos.
+
+boton4=tk.Button(ventana,text="Salir",bg="#63D7A2",fg="black",relief="raised",width=10,height=2,cursor="hand2",command=cerrarVentana)
+boton4.place(x=680,y=20) # Botón para salir de la aplicación.
+
+ventana.mainloop() # Inicia el bucle principal de Tkinter, que mantiene la ventana abierta y maneja los eventos.
